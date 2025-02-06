@@ -1,0 +1,464 @@
+---
+title: "Final"
+author: "Jacob Hillman"
+date: "2024-12-16"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse,readr,experimentr)
+```
+
+# Question 1
+
+
+```{r}
+final_data<-read_csv("./pokemon_final_exam_data.csv")
+
+head(final_data)
+
+nrow(final_data)
+```
+Exercise 1: The first exercise 
+
+Load the pokemon final exam data.csv file available on Canvas presenting a
+sample of pokemon, specifically those introduced from generation 1 to 7.
+
+(a) Create two scatterplots: one with Speed on the y-axis and SP Defense on the x-axis, the
+second with Speed on the y-axis and SP Attack on the x-axis. Which pair of variables is more
+correlated? SP Defense and Speed or SP Attack and Speed? What information are you using
+to make that determination?
+
+
+```{r}
+ggplot(final_data, aes(x = SP_Defense, y = Speed)) +
+  geom_point() 
+```
+```{r}
+ggplot(final_data, aes(x = SP_Attack, y = Speed)) +
+  geom_point() 
+```
+
+I would say that the second two variables are more correlated, this is because the points in the second plot are more in a line, so a lm would have a lower MSE.
+
+
+(b) Compute the quantile 0.85 for the ”SP Attack” stat. Plot a bootstrap estimated sampling
+distribution for the quantile 0.85 for the ”SP Attack” stat. Create a 90% estimated confidence
+interval and interpret it in plain language.
+
+```{r}
+quantile(final_data$SP_Attack, 0.85)
+```
+
+```{r}
+poke_sample<-sample(final_data$SP_Attack,940, replace=T)
+set.seed(31)
+#Save the sample mean
+N <- 20000
+n <- length(poke_sample)
+mean.boot <-  rep(NA, n)
+#Loop
+for(i in 1:N){
+  poke_sample<-sample(final_data$SP_Attack,940, replace=T)
+  mean.boot[i] <- quantile(poke_sample, 0.85)
+}
+ci<-quantile(mean.boot, c(0.05, 0.95))
+
+ci
+```
+
+This confidence interval means that if we repeated this procedure 100 times, 90 of those intervals created would
+include the true population mean.
+
+c. Create a not-necessarily parallel lines model with Speed as the response variable and SP Attack
+and Type1 as predictors. Is there at least one predictor that is in a relationship with the
+response variable? Explain how you know.
+
+```{r}
+final_exam.not.parallel.lines.model.fit = lm(Speed ~ Type1 * SP_Attack , data=final_data)
+
+summary(final_exam.not.parallel.lines.model.fit)
+```
+The p-value of the f-statistic is less than 0.05 so we can say that at least one predictor is in a relationship with the response variable.
+
+(d) Create a not-necessarily parallel lines model with Speed as response variable and SP Defense
+and Type1 as predictors. Report and interpret in words the multiple R2.
+
+```{r}
+final_exam.not.parallel.lines.model.fit1 = lm(Speed ~ Type1 * SP_Defense , data=final_data)
+
+summary(final_exam.not.parallel.lines.model.fit)
+```
+The Multiple R-squared is 0.1493, which is the amount of variation explained by our line that isn't explained just by a flat line at the mean.
+
+
+
+e. Use LOOCV to estimate the out-of-sample MSE for the models in (3) and (4). Report the
+MSE. Which model do you prefer? Explain why and write down the selected model equation.
+
+```{r}
+
+library(caret)
+
+# Define a custom summary function to calculate RMSE and RSS
+rss_summary <- function(data, lev = NULL, model = NULL) {
+  # Calculate Residuals
+  residuals <- data$obs - data$pred
+  
+  # Calculate RSS
+  rss <- sum(residuals^2)
+  
+  # Calculate RMSE
+  rmse <- sqrt(mean(residuals^2))
+  
+  # Return as named vector
+  return(c(RMSE = rmse, RSS = rss))}
+  
+  
+# Define trainControl with LOOCV
+train_control_loocv <- trainControl(
+  method = "LOOCV",             # Leave-One-Out Cross-Validation
+  summaryFunction = rss_summary,# Custom summary function
+  savePredictions = "all",    # Save the final predictions for each iteration
+  classProbs = FALSE,           # Not needed for regression
+  allowParallel = FALSE         # Allow parallel processing if available
+)
+
+# Train Model A: Linear Regression using caret
+set.seed(123)  # For reproducibility
+model_A_loocv <- train(
+  Speed ~ Type1 * SP_Attack,
+  data = final_data,
+  method = "lm",
+  trControl = train_control_loocv,
+  metric = "RMSE"  # Primary metric to optimize
+)
+
+# Train Model B: Categorical Regression using caret
+set.seed(123)  # For reproducibility
+model_B_loocv <- train(
+  Speed ~ Type1 * SP_Defense,
+  data = final_data,
+  method = "lm",
+  trControl = train_control_loocv,
+  metric = "RMSE"  # Primary metric to optimize
+)
+
+# Extract RSS values for Model A
+model_A_loocv$results
+# Extract RSS values for Model B
+model_B_loocv$results
+```
+
+Model one has the lower RMSE so I would consider it to be a better model.Selected model equation: Speed ~ Type1 * SP_Attack.
+
+
+f.Plot a scatterplot showing the lines identified by the model you selected in (e). Write down
+the line equation for a Fairy Type pokemon.
+
+```{r}
+ggplot(final_data, aes(x = SP_Attack, y = Speed)) +
+  geom_point() 
+```
+
+```{r}
+
+
+
+finalpredictions <- final_data %>%
+  mutate(cesd2 = predict(final_exam.not.parallel.lines.model.fit))
+
+ggplot(finalpredictions, aes(x =SP_Attack , y = Speed, color = Type1)) +
+  geom_point() +  
+  geom_line(aes(y = cesd2, group = Type1))  
+  
+```
+Equation for fairy type pokemon: 58.651+(-54.51)+SP_Defense*0.482
+
+```{r}
+summary(final_exam.not.parallel.lines.model.fit)
+```
+g.Verify the assumption of normality of the residuals using Q-Q plot, histograms of the residuals,
+and the Shapiro-Wilk test for the model you selected in (e). Is the assumption verified?
+Explain how you made your determination in detail.
+
+```{r}
+par(mfrow = c(2, 2))  
+plot(final_exam.not.parallel.lines.model.fit) 
+
+par(mfrow = c(1, 1))
+```
+```{r}
+residual_vector <- residuals(final_exam.not.parallel.lines.model.fit)
+shapiro.test(residual_vector)
+```
+The Q-Q plot is close enough to the line that I cannot reject the assumption of normality
+
+However the Shapiro Wilkes test yields a p-value of less than 0.05 indicating that the residuals are not normally distributed.
+
+h. Verify the assumption of zero mean residuals and homoscedastictiy of the residuals for the
+model you selected in (e). Is the assumption verified? Include any plots you used to make
+your determination and explain in detail.
+
+```{r}
+par(mfrow = c(2, 2))  
+plot(final_exam.not.parallel.lines.model.fit) 
+
+par(mfrow = c(1, 1))
+```
+
+Based on residuals vs. fitted, residuals do not appear to be homoskedastic as there is more variance in the center of the plot, but do appear to be mean 0.
+
+
+i. Report the 95% confidence interval for the coefficient of the continuous variable (the one with-
+out interaction) using the R summary. Report the same confidence interval (95%) obtained
+using bootstrapping. Considering (g) and (h), which confidence interval is more reliable?
+Explain why.
+
+```{r}
+confint(final_exam.not.parallel.lines.model.fit)
+```
+confidence interval is SP_Attack                 (0.3527819  0.73019503)
+
+Using Bootstrapping
+
+
+```{r}
+set.seed(42) 
+
+B <- 40  
+
+b_SP_Attack <- numeric(B)  
+
+for (b in 1:B) {
+  poke_sample <- final_data[sample(1:nrow(final_data), replace = TRUE), ]  
+  
+  boot_mod_final <- lm(Speed ~ Type1 * SP_Attack, data = poke_sample)  
+  
+  b_SP_Attack[b] <- coef(boot_mod_final)["SP_Attack"]  
+}
+
+boot_ci <- quantile(b_SP_Attack, probs = c(0.025, 0.975))  
+print(boot_ci)
+
+```
+
+If assumptions are violated then the Bootstrap is more reliable, so in this case the bootstrap is more reliable.
+
+j. Now create the dataset dragon bug starting from df (the data frame you used until now)
+running the code below (with the dplyr package):
+
+```{r}
+library ( tidyverse )
+ dragon_bug <- final_data %>%
+filter ( Type1 %in% c ( " Dragon " , " Bug " ) ) %>%
+select ( Name , Generation , Type1 , HP )
+```
+
+```{r}
+
+ggplot(dragon_bug, aes(x = Generation, y = HP,color=Type1)) +
+  geom_point() 
+```
+
+
+Exercise 2
+
+```{r}
+
+library(gmm)
+data(nsw)
+```
+
+a.
+Calculate the ˆAT E: difference in mean post-program income between the treated and un-
+treated. Is this causally identified? Explain and interpret the estimate in plain language
+
+
+```{r}
+head(nsw)
+```
+
+```{r}
+mean_income_treated <- mean(nsw$re78[nsw$treat == 1], na.rm = TRUE)
+mean_income_untreated <- mean(nsw$re78[nsw$treat == 0], na.rm = TRUE)
+diff_means<-mean_income_treated-mean_income_untreated
+diff_means
+```
+People who received the treatment were making on average 886$ more than people who did not recieve the treatment in 1978.
+
+b.Using a bootstrap, create a 95% Confidence Interval for the AT E and interpret your result
+in plain language.
+```{r}
+nrow(nsw)
+```
+
+```{r}
+set.seed(31) 
+
+B <- 2000
+
+boot_diff_means <- numeric(B)
+
+for (i in 1:B) {
+  boot_sample <- nsw[sample(1:nrow(nsw), replace = TRUE), ]
+  
+  mean_treated <- mean(boot_sample$re78[boot_sample$treat == 1], na.rm = TRUE)
+  mean_untreated <- mean(boot_sample$re78[boot_sample$treat == 0], na.rm = TRUE)
+  
+  boot_diff_means[i] <- mean_treated - mean_untreated
+}
+
+ci <- quantile(boot_diff_means, probs = c(0.025, 0.975))
+ci
+
+```
+This means that if we drew an interval of this width on every estimate, 95% of the intervals would cover the estimand. 
+
+c.
+Using a simple least squares regression, estimate the AT E. Create a scatter plot with 1978
+earnings on the y-axis, treatment on the x-axis, and plot your least squares line. Interpret
+each coefficient in plain language.
+
+```{r}
+nsw_model<-lm(re78 ~ treat, data = nsw)
+summary(nsw_model)
+```
+The intercept is the mean for re78 among the untreated, treat is the difference between that and re78 among the treated.
+```{r}
+nswpredictions <- nsw %>%
+  mutate(cesd3 = predict(nsw_model))
+
+ggplot(nswpredictions, aes(x = treat , y = re78)) +
+  geom_point() +  
+  geom_line(aes(y = cesd3))
+```
+
+d.
+Before running any further models, discuss whether your think the coefficient on treatment
+will change if you add other covariates to the model (simple addition, not an interaction),
+such as age, married, education, nodeg, or race/ethnicity measures. Does your answer depend
+on which covariate you are considering adding? Explain. Hint: you can use an equation to
+help justify your answer, but you must describe it in plain language
+
+It's possible because the treatment could be more effective among those who were already more educated, for example. It depends if the covariate I add would impact the effectivness of the treatment.
+
+e. Using differences in means, estimate conditional average treatment effects for individuals with
+a high school diploma and without a high school diploma. Are these estimates causally
+identified? Explain
+
+These effects are causally identified, because treatment was randomized across levels of education, which means it was also randomized within levels of education.
+```{r}
+mean_income_treated <- mean(nsw$re78[nsw$treat == 1 & nsw$nodeg==0], na.rm = TRUE)
+mean_income_untreated <- mean(nsw$re78[nsw$treat == 0 & nsw$nodeg==0], na.rm = TRUE)
+diff_means<-mean_income_treated-mean_income_untreated
+diff_means
+```
+
+```{r}
+mean_income_treated <- mean(nsw$re78[nsw$treat == 1 & nsw$nodeg==1], na.rm = TRUE)
+mean_income_untreated <- mean(nsw$re78[nsw$treat == 0 & nsw$nodeg==1], na.rm = TRUE)
+diff_means<-mean_income_treated-mean_income_untreated
+diff_means
+```
+
+f.  Calculate a standardized ˆCAT E for those with and without high school diplomas. Compare
+this estimate to your estimated ˆAT E. Are these values the same or different? Explain why
+this is the case. Hint: Investigate how treatment assignment differs across those with and
+without degrees.
+
+```{r}
+nsw_nodeg<-nsw%>%
+  filter(nodeg==1)
+nrow(nsw_nodeg)
+```
+
+
+```{r}
+nsw_deg<-nsw%>%
+  filter(nodeg==0)
+nrow(nsw_deg)
+```
+
+
+```{r}
+cate<-1058.705*(159/722)+706.4658*(563/722)
+cate
+```
+This is smaller than the ATE I calculated, this is probably because people without high school degrees, who had lower ATEs, were more likely to be assigned to treatment.
+
+g. Using a least squares regression, estimate the CAT Es for those with and without degrees.
+Interpret each coefficient estimate in plain language, then describe what coefficient(s) give
+you the CAT E estimated from part (e).
+
+
+```{r}
+lm_g <- lm(re78 ~ treat * nodeg, data = nsw)
+summary(lm_g)
+```
+
+Intercept is how much people with no treatment with a degree were making in 1978
+treat is how much more money people with treatment and a degree were making in 1978
+nodeg is how much less money people with no treatment and no degree were making in 1978
+treat:nodeg is how much less of a treatment effect people with treatment and no degree had compared to those with a degree had.
+
+treat gives CATE for those with a degree
+
+treat+treat:nodeg gives CATE for those without a degree
+
+h.
+
+Using a bootstrap, create two 95% Confidence Intervals for the CAT Es (with degree and
+no degree). Use your least squares regression estimator (not difference in means) for this
+bootstrap and interpret your result in plain language.
+
+```{r}
+set.seed(31) 
+
+B <- 2000
+
+boot_diff_means <- numeric(B)
+
+for (i in 1:B) {
+  boot_sample <- nsw[sample(1:nrow(nsw), replace = TRUE), ]
+  
+lm_g <- lm(re78 ~ treat * nodeg, data = nsw)
+
+b_SP_Attack[i] <- coef(lm_g)["treat"]  
+  
+ 
+}
+
+ci_nodeg <- quantile(b_SP_Attack, probs = c(0.025, 0.975))
+ci_nodeg
+
+```
+
+```{r}
+set.seed(31) 
+
+B <- 2000
+
+boot_diff_means <- numeric(B)
+
+for (i in 1:B) {
+  boot_sample <- nsw[sample(1:nrow(nsw), replace = TRUE), ]
+  
+lm_g <- lm(re78 ~ treat * nodeg, data = nsw)
+
+b_SP_Attack[i] <- coef(lm_g)["treat"]-coef(lm_g)["treat:nodeg"] 
+  
+
+
+
+}
+
+ci_deg <- quantile(b_SP_Attack, probs = c(0.025, 0.975))
+ci_deg
+
+```
+
+If we repeated this procedure, 95% of the intervals generated in this way would include the true population CATEs for workers with and without a degree.
